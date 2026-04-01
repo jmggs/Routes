@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Garmin Route Builder</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #2a3040;
+    --green: #8fbc6a;
+    --green-dark: #2a5c2a;
+    --text: #e8e0d0;
+    --muted: #6a7a6a;
+    --red: #e06060;
+    --orange: #e0a060;
+  }
+  body {
+    font-family: 'Barlow Condensed', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* TOP BAR */
+  #topbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+  #topbar h1 {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    color: #fff;
+    white-space: nowrap;
+  }
+  #topbar h1 span { color: var(--green); }
+  .mode-btns { display: flex; gap: 4px; }
+  .mode-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .mode-btn.active { background: var(--green); color: var(--bg); border-color: var(--green); }
+  .mode-btn:hover:not(.active) { border-color: var(--green); color: var(--green); }
+  .sep { width: 1px; background: var(--border); height: 28px; }
+  .top-action {
+    padding: 7px 16px;
+    border-radius: 4px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border: none;
+    transition: all .15s;
+  }
+  #btn-export { background: var(--green); color: var(--bg); }
+  #btn-export:hover { background: #aad488; }
+  #btn-clear { background: transparent; color: var(--red); border: 1px solid #5c2a2a; }
+  #btn-clear:hover { background: #2a1010; }
+  #btn-undo { background: transparent; color: var(--orange); border: 1px solid #5c3a1a; }
+  #btn-undo:hover { background: #2a1a0a; }
+  .spacer { flex: 1; }
+  /* STATS BAR */
+  #statsbar {
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 16px;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-shrink: 0;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .stat-item { display: flex; align-items: center; gap: 6px; }
+  .stat-val { color: var(--green); font-size: 15px; font-weight: 700; font-family: 'Barlow Condensed', sans-serif; }
+  /* MAIN */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  /* SIDEBAR */
+  #sidebar {
+    width: 260px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #sidebar-title {
+    padding: 12px 14px 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+  #points-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  #points-list::-webkit-scrollbar { width: 4px; }
+  #points-list::-webkit-scrollbar-track { background: var(--bg); }
+  #points-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .pt-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid #1a2030;
+    transition: background .1s;
+  }
+  .pt-row:hover { background: #1a2030; }
+  .pt-icon {
+    width: 22px; height: 22px;
+    background: var(--green-dark);
+    color: var(--green);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    flex-shrink: 0;
+  }
+  .pt-icon.waypoint { background: #2a2a5c; color: #6a6afc; }
+  .pt-info { flex: 1; min-width: 0; }
+  .pt-name { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pt-coords { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--muted); }
+  .pt-del {
+    background: none; border: none; color: #5a3a3a; cursor: pointer;
+    font-size: 14px; padding: 2px 4px; border-radius: 2px;
+    transition: color .15s;
+  }
+  .pt-del:hover { color: var(--red); }
+  .empty-msg {
+    padding: 2rem 1rem;
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: #3a4a3a;
+    line-height: 1.7;
+  }
+  /* MAP */
+  #map {
+    flex: 1;
+    position: relative;
+    cursor: crosshair;
+  }
+  #map.mode-view { cursor: grab; }
+  #map.mode-view:active { cursor: grabbing; }
+  /* HINT OVERLAY */
+  #hint {
+    position: absolute;
+    bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(13,17,23,0.85);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    z-index: 999;
+    pointer-events: none;
+    white-space: nowrap;
+    backdrop-filter: blur(4px);
+  }
+  /* IMPORT PANEL */
+  #import-panel {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    z-index: 2000;
+    width: min(400px, 90vw);
+    display: none;
+  }
+  #import-panel.open { display: block; }
+  #import-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1999;
+    display: none;
+  }
+  #import-overlay.open { display: block; }
+  .panel-title { font-size: 20px; font-weight: 900; margin-bottom: 1rem; color: #fff; }
+  .panel-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; letter-spacing: 2px; color: var(--muted);
+    text-transform: uppercase; display: block; margin-bottom: 5px;
+  }
+  .panel-ta {
+    width: 100%; min-height: 100px;
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--green); border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace; font-size: 11px;
+    padding: 8px; resize: vertical;
+  }
+  .drop-zone {
+    border: 2px dashed var(--green-dark);
+    border-radius: 6px; padding: 1.5rem;
+    text-align: center; cursor: pointer;
+    color: var(--green); font-family: 'Share Tech Mono', monospace; font-size: 12px;
+    transition: background .2s; margin-bottom: 12px;
+  }
+  .drop-zone:hover { background: #1a2a1a; }
+  .drop-zone input { display: none; }
+  .panel-row { display: flex; gap: 8px; margin-top: 12px; }
+  .btn-ok {
+    background: var(--green); color: var(--bg);
+    border: none; border-radius: 4px;
+    padding: 9px 20px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700; font-size: 15px;
+    cursor: pointer; flex: 1;
+  }
+  .btn-cancel {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 9px 16px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600; font-size: 15px;
+    cursor: pointer;
+  }
+  /* RENAME popup */
+  #rename-popup {
+    position: absolute; z-index: 3000;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px;
+    min-width: 200px; display: none;
+  }
+  #rename-popup.open { display: block; }
+  #rename-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: 3px;
+    font-family: 'Share Tech Mono', monospace; font-size: 12px;
+    padding: 6px 8px; margin-bottom: 6px;
+  }
+  #rename-ok {
+    background: var(--green); color: var(--bg);
+    border: none; border-radius: 3px;
+    padding: 5px 12px;
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+    font-size: 13px; cursor: pointer;
+  }
+  /* Leaflet tweaks */
+  .leaflet-container { background: #1a2030; }
+  .custom-marker {
+    width: 10px; height: 10px;
+    background: var(--green); border: 2px solid #fff;
+    border-radius: 50%; cursor: pointer;
+  }
+  .custom-marker.waypoint {
+    width: 14px; height: 14px;
+    background: #6a6afc;
+  }
+  @media (max-width: 600px) {
+    #sidebar { display: none; }
+    #topbar h1 { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>🗺 Garmin <span>Route</span> Builder</h1>
+  <div class="sep"></div>
+  <div class="mode-btns">
+    <button class="mode-btn active" id="mode-route" onclick="setMode('route')" title="Clica no mapa para desenhar o percurso">🛣 Percurso</button>
+    <button class="mode-btn" id="mode-waypoint" onclick="setMode('waypoint')" title="Clica para adicionar pontos de interesse">📍 Waypoint</button>
+    <button class="mode-btn" id="mode-view" onclick="setMode('view')" title="Navegar no mapa sem adicionar pontos">🔍 Ver</button>
+  </div>
+  <div class="sep"></div>
+  <button class="top-action" id="btn-import" onclick="openImport()">📂 Importar KML</button>
+  <button class="top-action" id="btn-undo" onclick="undo()">↩ Desfazer</button>
+  <div class="spacer"></div>
+  <button class="top-action" id="btn-clear" onclick="clearAll()">🗑 Limpar</button>
+  <button class="top-action" id="btn-export" onclick="exportGPX()">⬇ GPX para Garmin</button>
+</div>
+
+<!-- STATS BAR -->
+<div id="statsbar">
+  <div class="stat-item">🛣 Distância: <span class="stat-val" id="stat-dist">0 km</span></div>
+  <div class="stat-item">📍 Pontos percurso: <span class="stat-val" id="stat-pts">0</span></div>
+  <div class="stat-item">⭐ Waypoints: <span class="stat-val" id="stat-wp">0</span></div>
+  <div class="stat-item" style="margin-left:auto;color:#3a5a3a">
+    <span id="mode-hint">Modo: PERCURSO — clica no mapa para adicionar pontos ao percurso</span>
+  </div>
+</div>
+
+<div id="main">
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="sidebar-title">Pontos & Waypoints</div>
+    <div id="points-list">
+      <div class="empty-msg" id="empty-msg">
+        Nenhum ponto ainda.<br><br>
+        Clica no mapa para<br>começar o percurso.
+      </div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map"></div>
+  <div id="hint">Modo PERCURSO — clica no mapa para desenhar</div>
+</div>
+
+<!-- IMPORT PANEL -->
+<div id="import-overlay" onclick="closeImport()"></div>
+<div id="import-panel">
+  <div class="panel-title">📂 Importar KML</div>
+  <label class="drop-zone" id="drop-zone">
+    <div style="font-size:28px;margin-bottom:6px">📂</div>
+    Clica para seleccionar .kml<br>
+    <span style="color:#3a5a3a;font-size:10px">Exportado do Google My Maps</span>
+    <input type="file" id="kml-file" accept=".kml,.xml" onchange="handleFile(event)">
+  </label>
+  <label class="panel-label">Ou cola o KML aqui</label>
+  <textarea class="panel-ta" id="kml-paste" placeholder='<?xml version="1.0"...'></textarea>
+  <div class="panel-row">
+    <button class="btn-ok" onclick="importKML()">IMPORTAR</button>
+    <button class="btn-cancel" onclick="closeImport()">Cancelar</button>
+  </div>
+</div>
+
+<!-- RENAME POPUP -->
+<div id="rename-popup">
+  <label class="panel-label">Nome do waypoint</label>
+  <input id="rename-input" type="text" placeholder="Nome...">
+  <br>
+  <button id="rename-ok" onclick="confirmRename()">OK</button>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────
+let mode = 'route';
+let routePoints = [];   // [{lat, lng, marker}]
+let waypoints = [];     // [{lat, lng, name, marker}]
+let routeLine = null;
+let renameTarget = null;
+
+// ─── MAP SETUP ────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([39.5, -8.0], 7);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+// Dark tile alternative (Carto)
+const darkTile = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO', maxZoom: 19
+}).addTo(map);
+darkTile.bringToBack();
+
+// ─── ICONS ────────────────────────────────────────────────
+function routeIcon(n) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:10px;height:10px;background:#8fbc6a;border:2px solid #fff;border-radius:50%;cursor:pointer"></div>`,
+    iconSize: [10,10], iconAnchor: [5,5]
+  });
+}
+function waypointIcon(name) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center">
+      <div style="width:16px;height:16px;background:#6a6afc;border:2px solid #fff;border-radius:50%;cursor:pointer;box-shadow:0 0 6px #6a6afc88"></div>
+      <div style="background:rgba(13,17,23,0.85);color:#6a6afc;font-family:'Share Tech Mono',monospace;font-size:9px;padding:1px 5px;border-radius:2px;white-space:nowrap;margin-top:2px;border:1px solid #3a3a8c">${escHTML(name)}</div>
+    </div>`,
+    iconSize: [16,16], iconAnchor: [8,8]
+  });
+}
+
+function escHTML(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── MAP CLICK ────────────────────────────────────────────
+map.on('click', function(e) {
+  if (mode === 'view') return;
+  if (mode === 'route') addRoutePoint(e.latlng);
+  if (mode === 'waypoint') addWaypoint(e.latlng);
+});
+
+function addRoutePoint(latlng) {
+  const m = L.circleMarker(latlng, {
+    radius: 5, color: '#8fbc6a', fillColor: '#8fbc6a', fillOpacity: 1, weight: 2
+  }).addTo(map);
+  m.on('contextmenu', function(e) {
+    L.DomEvent.stopPropagation(e);
+    const i = routePoints.findIndex(p => p.marker === m);
+    if (i >= 0) removeRoutePoint(i);
+  });
+  routePoints.push({ lat: latlng.lat, lng: latlng.lng, marker: m });
+  drawRoute();
+  updateUI();
+}
+
+function addWaypoint(latlng, name) {
+  const n = name || `WP ${waypoints.length + 1}`;
+  const m = L.marker(latlng, { icon: waypointIcon(n), draggable: true }).addTo(map);
+  const wp = { lat: latlng.lat, lng: latlng.lng, name: n, marker: m };
+  m.on('click', function(e) { L.DomEvent.stopPropagation(e); showRename(wp, e.originalEvent); });
+  m.on('dragend', function() {
+    const pos = m.getLatLng();
+    wp.lat = pos.lat; wp.lng = pos.lng;
+    updateUI();
+  });
+  waypoints.push(wp);
+  updateUI();
+}
+
+function removeRoutePoint(i) {
+  map.removeLayer(routePoints[i].marker);
+  routePoints.splice(i, 1);
+  drawRoute();
+  updateUI();
+}
+
+function removeWaypoint(i) {
+  map.removeLayer(waypoints[i].marker);
+  waypoints.splice(i, 1);
+  updateUI();
+}
+
+function drawRoute() {
+  if (routeLine) map.removeLayer(routeLine);
+  if (routePoints.length < 2) { routeLine = null; return; }
+  const latlngs = routePoints.map(p => [p.lat, p.lng]);
+  routeLine = L.polyline(latlngs, { color: '#8fbc6a', weight: 3, opacity: 0.85, dashArray: null }).addTo(map);
+}
+
+// ─── MODE ─────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('mode-' + m).classList.add('active');
+  const mapEl = document.getElementById('map');
+  mapEl.className = m === 'view' ? 'mode-view' : '';
+  const hints = {
+    route: 'Modo PERCURSO — clica para adicionar pontos ao caminho · Botão direito para remover',
+    waypoint: 'Modo WAYPOINT — clica para adicionar um ponto de interesse · Clica no ícone para renomear',
+    view: 'Modo VER — navega no mapa livremente'
+  };
+  document.getElementById('hint').textContent = hints[m];
+  document.getElementById('mode-hint').textContent = hints[m];
+}
+
+// ─── UNDO ─────────────────────────────────────────────────
+function undo() {
+  if (mode === 'route' && routePoints.length > 0) {
+    const last = routePoints.pop();
+    map.removeLayer(last.marker);
+    drawRoute();
+    updateUI();
+  } else if (mode === 'waypoint' && waypoints.length > 0) {
+    const last = waypoints.pop();
+    map.removeLayer(last.marker);
+    updateUI();
+  }
+}
+
+// ─── CLEAR ────────────────────────────────────────────────
+function clearAll() {
+  if (!confirm('Limpar tudo?')) return;
+  routePoints.forEach(p => map.removeLayer(p.marker));
+  waypoints.forEach(p => map.removeLayer(p.marker));
+  routePoints = []; waypoints = [];
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  updateUI();
+}
+
+// ─── RENAME ───────────────────────────────────────────────
+let renameWP = null;
+function showRename(wp, ev) {
+  renameWP = wp;
+  const popup = document.getElementById('rename-popup');
+  document.getElementById('rename-input').value = wp.name;
+  popup.style.left = Math.min(ev.clientX, window.innerWidth - 220) + 'px';
+  popup.style.top = Math.min(ev.clientY, window.innerHeight - 80) + 'px';
+  popup.classList.add('open');
+  setTimeout(() => document.getElementById('rename-input').focus(), 50);
+}
+function confirmRename() {
+  if (!renameWP) return;
+  renameWP.name = document.getElementById('rename-input').value || renameWP.name;
+  renameWP.marker.setIcon(waypointIcon(renameWP.name));
+  document.getElementById('rename-popup').classList.remove('open');
+  updateUI();
+}
+document.addEventListener('click', e => {
+  if (!document.getElementById('rename-popup').contains(e.target))
+    document.getElementById('rename-popup').classList.remove('open');
+});
+document.getElementById('rename-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmRename();
+});
+
+// ─── IMPORT KML ───────────────────────────────────────────
+function openImport() {
+  document.getElementById('import-panel').classList.add('open');
+  document.getElementById('import-overlay').classList.add('open');
+}
+function closeImport() {
+  document.getElementById('import-panel').classList.remove('open');
+  document.getElementById('import-overlay').classList.remove('open');
+}
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => document.getElementById('kml-paste').value = ev.target.result;
+  reader.readAsText(file);
+}
+function importKML() {
+  const text = document.getElementById('kml-paste').value.trim();
+  if (!text) return;
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/xml');
+    const pms = doc.querySelectorAll('Placemark');
+    let added = 0;
+    pms.forEach(pm => {
+      const name = pm.querySelector('name')?.textContent?.trim() || 'Ponto';
+      // Points → waypoints
+      const coordPt = pm.querySelector('Point > coordinates');
+      if (coordPt) {
+        const [lon, lat] = coordPt.textContent.trim().split(',').map(Number);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          addWaypoint(L.latLng(lat, lon), name);
+          added++;
+        }
+      }
+      // LineStrings → route
+      const coordLn = pm.querySelector('LineString > coordinates') || pm.querySelector('MultiGeometry LineString > coordinates');
+      if (coordLn) {
+        coordLn.textContent.trim().split(/\s+/).forEach(trio => {
+          const [lon, lat] = trio.split(',').map(Number);
+          if (!isNaN(lat) && !isNaN(lon)) {
+            addRoutePoint(L.latLng(lat, lon));
+            added++;
+          }
+        });
+      }
+    });
+    if (added === 0) alert('Nenhum ponto encontrado no KML.');
+    else { closeImport(); if (routePoints.length) map.fitBounds(routeLine?.getBounds() || map.getBounds()); }
+  } catch(e) { alert('Erro ao ler o KML: ' + e.message); }
+}
+
+// ─── EXPORT GPX ───────────────────────────────────────────
+function haversine(a, b) {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLon = (b.lng - a.lng) * Math.PI / 180;
+  const s = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(s));
+}
+
+function totalDist() {
+  let d = 0;
+  for (let i = 1; i < routePoints.length; i++) d += haversine(routePoints[i-1], routePoints[i]);
+  return d;
+}
+
+function exportGPX() {
+  if (routePoints.length < 2 && waypoints.length === 0) {
+    alert('Adiciona pelo menos 2 pontos ao percurso ou um waypoint!');
+    return;
+  }
+  const now = new Date().toISOString();
+  const trkpts = routePoints.map(p =>
+    `      <trkpt lat="${p.lat.toFixed(6)}" lon="${p.lng.toFixed(6)}"><ele>0</ele></trkpt>`
+  ).join('\n');
+  const wpts = waypoints.map(p =>
+    `  <wpt lat="${p.lat.toFixed(6)}" lon="${p.lng.toFixed(6)}">
+    <ele>0</ele>
+    <name><![CDATA[${p.name}]]></name>
+    <sym>City (Small)</sym>
+  </wpt>`
+  ).join('\n');
+
+  const trkseg = routePoints.length >= 2 ? `
+  <trk>
+    <name>Percurso</name>
+    <trkseg>
+${trkpts}
+    </trkseg>
+  </trk>` : '';
+
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Garmin Route Builder"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Percurso Garmin</name>
+    <time>${now}</time>
+  </metadata>
+${wpts}${trkseg}
+</gpx>`;
+
+  const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'percurso_garmin.gpx'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── UI UPDATE ────────────────────────────────────────────
+function updateUI() {
+  const d = totalDist();
+  document.getElementById('stat-dist').textContent = d > 1 ? d.toFixed(1) + ' km' : (d*1000).toFixed(0) + ' m';
+  document.getElementById('stat-pts').textContent = routePoints.length;
+  document.getElementById('stat-wp').textContent = waypoints.length;
+
+  const list = document.getElementById('points-list');
+  const empty = document.getElementById('empty-msg');
+  const total = routePoints.length + waypoints.length;
+
+  if (total === 0) {
+    empty.style.display = 'block';
+    list.innerHTML = '';
+    list.appendChild(empty);
+    return;
+  }
+  empty.style.display = 'none';
+
+  let html = '';
+  routePoints.forEach((p, i) => {
+    html += `<div class="pt-row">
+      <div class="pt-icon">${i+1}</div>
+      <div class="pt-info">
+        <div class="pt-name">Ponto ${i+1}</div>
+        <div class="pt-coords">${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}</div>
+      </div>
+      <button class="pt-del" onclick="removeRoutePoint(${i})" title="Remover">✕</button>
+    </div>`;
+  });
+  waypoints.forEach((p, i) => {
+    html += `<div class="pt-row">
+      <div class="pt-icon waypoint">★</div>
+      <div class="pt-info">
+        <div class="pt-name">${escHTML(p.name)}</div>
+        <div class="pt-coords">${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}</div>
+      </div>
+      <button class="pt-del" onclick="removeWaypoint(${i})" title="Remover">✕</button>
+    </div>`;
+  });
+  list.innerHTML = html;
+}
+
+updateUI();
+</script>
+</body>
+</html>
